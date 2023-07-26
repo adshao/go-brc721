@@ -9,24 +9,24 @@ import (
 )
 
 func TestRawMessage(t *testing.T) {
-	data := &MessageData{
+	data := &MintSig{
 		Receiver:      "receiver",
 		Uid:           "uid",
 		ExpiredTime:   123456,
 		ExpiredHeight: 789,
 	}
 
-	raw := data.rawMessage()
+	raw := data.message()
 	assert.Equal(t, "exph=789&expt=123456&rec=receiver&uid=uid", string(raw))
 
-	data = &MessageData{
+	data = &MintSig{
 		Receiver:      "receiver",
 		Uid:           "uid",
 		ExpiredTime:   123456,
 		ExpiredHeight: 0,
 	}
 
-	raw = data.rawMessage()
+	raw = data.message()
 	assert.Equal(t, "expt=123456&rec=receiver&uid=uid", string(raw))
 }
 
@@ -44,7 +44,7 @@ func TestSignAndVerify(t *testing.T) {
 	pubKey, err = btcec.ParsePubKey(pubKeyBytes)
 	assert.NoError(t, err)
 
-	data := &MessageData{
+	data := &MintSig{
 		Receiver:      "receiver",
 		Uid:           "uid",
 		ExpiredTime:   123456,
@@ -54,13 +54,28 @@ func TestSignAndVerify(t *testing.T) {
 	sig, err := data.Sign(privKey)
 	assert.NoError(t, err)
 
-	valid, err := data.Verify(pubKey, sig)
+	data.Signature = string(sig)
+
+	valid, err := data.Verify(pubKey)
 	assert.NoError(t, err)
 	assert.True(t, valid)
 
 	// Change one of the fields and verify that the signature is invalid
 	data.Receiver = "new_receiver"
-	valid, err = data.Verify(pubKey, sig)
+	valid, err = data.Verify(pubKey)
 	assert.NoError(t, err)
 	assert.False(t, valid)
+}
+
+func TestParsePubKey(t *testing.T) {
+	privKey, err := btcec.NewPrivateKey()
+	assert.NoError(t, err)
+
+	pubKey := privKey.PubKey()
+	// convert public key to compressed format in hex string
+	pubKeyHex := hex.EncodeToString(pubKey.SerializeCompressed())
+
+	pubKey, err = ParsePubKey(pubKeyHex)
+	assert.NoError(t, err)
+	assert.Equal(t, pubKeyHex, hex.EncodeToString(pubKey.SerializeCompressed()))
 }
