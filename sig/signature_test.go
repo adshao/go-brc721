@@ -8,6 +8,44 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestDeploySig(t *testing.T) {
+	data := &DeploySig{
+		PubKey: "0379f79637ec1cc5375c4e269e9d70eda426b5ecba5d4088234a89e8943dc4aa9f",
+		Fields: []SigField{SigFieldReceiver, SigFieldUid, SigFieldExpiredTime, SigFieldExpiredHeight},
+	}
+
+	err := data.Validate()
+	assert.NoError(t, err, "DeploySig should be valid")
+
+	data = &DeploySig{
+		PubKey: "0379f79637ec1cc5375c4e269e9d70eda426b5ecba5d4088234a89e8943dc4aa9f1",
+		Fields: []SigField{SigFieldReceiver, SigFieldUid, SigFieldExpiredTime, SigFieldExpiredHeight},
+	}
+	err = data.Validate()
+	assert.Error(t, err, "DeploySig should be invalid because of invalid public key")
+
+	data = &DeploySig{
+		PubKey: "0379f79637ec1cc5375c4e269e9d70eda426b5ecba5d4088234a89e8943dc4aa9f",
+		Fields: []SigField{},
+	}
+	err = data.Validate()
+	assert.Error(t, err, "DeploySig should be invalid because of empty fields")
+
+	data = &DeploySig{
+		PubKey: "0379f79637ec1cc5375c4e269e9d70eda426b5ecba5d4088234a89e8943dc4aa9f",
+		Fields: []SigField{SigFieldReceiver, SigFieldUid, SigFieldExpiredTime, SigFieldExpiredHeight, "invalid"},
+	}
+	err = data.Validate()
+	assert.Error(t, err, "DeploySig should be invalid because of invalid field")
+
+	data = &DeploySig{
+		PubKey: "0379f79637ec1cc5375c4e269e9d70eda426b5ecba5d4088234a89e8943dc4aa9f",
+		Fields: []SigField{SigFieldReceiver, SigFieldUid, SigFieldExpiredTime, SigFieldExpiredHeight, SigFieldReceiver},
+	}
+	err = data.Validate()
+	assert.Error(t, err, "DeploySig should be invalid because of duplicate field")
+}
+
 func TestRawMessage(t *testing.T) {
 	data := &MintSig{
 		Receiver:      "receiver",
@@ -60,6 +98,13 @@ func TestSignAndVerify(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, valid)
 
+	// test Validate
+	err = data.Validate(&DeploySig{
+		PubKey: pubKeyHex,
+		Fields: []SigField{SigFieldReceiver, SigFieldUid, SigFieldExpiredTime, SigFieldExpiredHeight},
+	})
+	assert.NoError(t, err)
+
 	// Change one of the fields and verify that the signature is invalid
 	data.Receiver = "new_receiver"
 	valid, err = data.Verify(pubKey)
@@ -78,4 +123,58 @@ func TestParsePubKey(t *testing.T) {
 	pubKey, err = ParsePubKey(pubKeyHex)
 	assert.NoError(t, err)
 	assert.Equal(t, pubKeyHex, hex.EncodeToString(pubKey.SerializeCompressed()))
+}
+
+func TestValidateMintSig(t *testing.T) {
+	mintSig := &MintSig{
+		Receiver:      "",
+		Uid:           "uid",
+		ExpiredTime:   123456,
+		ExpiredHeight: 789,
+	}
+	err := mintSig.Validate(&DeploySig{
+		PubKey: "0379f79637ec1cc5375c4e269e9d70eda426b5ecba5d4088234a89e8943dc4aa9f",
+		Fields: []SigField{SigFieldReceiver, SigFieldUid, SigFieldExpiredTime, SigFieldExpiredHeight},
+	})
+	// missing receiver
+	assert.Error(t, err)
+
+	mintSig = &MintSig{
+		Receiver:      "receiver",
+		Uid:           "",
+		ExpiredTime:   123456,
+		ExpiredHeight: 789,
+	}
+	err = mintSig.Validate(&DeploySig{
+		PubKey: "0379f79637ec1cc5375c4e269e9d70eda426b5ecba5d4088234a89e8943dc4aa9f",
+		Fields: []SigField{SigFieldReceiver, SigFieldUid, SigFieldExpiredTime, SigFieldExpiredHeight},
+	})
+	// missing uid
+	assert.Error(t, err)
+
+	mintSig = &MintSig{
+		Receiver:      "receiver",
+		Uid:           "uid",
+		ExpiredTime:   0,
+		ExpiredHeight: 789,
+	}
+	err = mintSig.Validate(&DeploySig{
+		PubKey: "0379f79637ec1cc5375c4e269e9d70eda426b5ecba5d4088234a89e8943dc4aa9f",
+		Fields: []SigField{SigFieldReceiver, SigFieldUid, SigFieldExpiredTime, SigFieldExpiredHeight},
+	})
+	// missing expired time
+	assert.Error(t, err)
+
+	mintSig = &MintSig{
+		Receiver:      "receiver",
+		Uid:           "uid",
+		ExpiredTime:   123456,
+		ExpiredHeight: 0,
+	}
+	err = mintSig.Validate(&DeploySig{
+		PubKey: "0379f79637ec1cc5375c4e269e9d70eda426b5ecba5d4088234a89e8943dc4aa9f",
+		Fields: []SigField{SigFieldReceiver, SigFieldUid, SigFieldExpiredTime, SigFieldExpiredHeight},
+	})
+	// missing expired height
+	assert.Error(t, err)
 }

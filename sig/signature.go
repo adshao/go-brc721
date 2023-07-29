@@ -25,6 +25,33 @@ type DeploySig struct {
 	Fields []SigField `json:"fields"`
 }
 
+func (d *DeploySig) Validate() error {
+	if d.PubKey == "" || len(d.Fields) == 0 {
+		return fmt.Errorf("missing pk or fields")
+	}
+	_, err := ParsePubKey(d.PubKey)
+	if err != nil {
+		return err
+	}
+	for _, field := range d.Fields {
+		switch field {
+		case SigFieldReceiver, SigFieldUid, SigFieldExpiredTime, SigFieldExpiredHeight:
+			continue
+		default:
+			return fmt.Errorf("invalid field")
+		}
+	}
+	// make sure there are no duplicate fields
+	m := make(map[SigField]bool)
+	for _, field := range d.Fields {
+		if m[field] {
+			return fmt.Errorf("duplicate field %s", field)
+		}
+		m[field] = true
+	}
+	return nil
+}
+
 type MintSig struct {
 	Signature     string `json:"s"`
 	Receiver      string `json:"rec"`
@@ -90,6 +117,41 @@ func (d *MintSig) Verify(pubKey *btcec.PublicKey) (bool, error) {
 		return false, err
 	}
 	return sig.Verify(hash[:], pubKey), nil
+}
+
+func (d *MintSig) Validate(deploySig *DeploySig) error {
+	if err := deploySig.Validate(); err != nil {
+		return fmt.Errorf("invalid deploySig: %v", err)
+	}
+	// make sure all fields in deploySig are in mintSig
+	for _, field := range deploySig.Fields {
+		switch field {
+		case SigFieldReceiver:
+			if d.Receiver == "" {
+				return fmt.Errorf("missing rec")
+			}
+		case SigFieldUid:
+			if d.Uid == "" {
+				return fmt.Errorf("missing uid")
+			}
+		case SigFieldExpiredTime:
+			if d.ExpiredTime == 0 {
+				return fmt.Errorf("missing expt")
+			}
+		case SigFieldExpiredHeight:
+			if d.ExpiredHeight == 0 {
+				return fmt.Errorf("missing exph")
+			}
+		}
+	}
+	pubKey, err := ParsePubKey(deploySig.PubKey)
+	if err != nil {
+		return err
+	}
+	if ok, err := d.Verify(pubKey); !ok || err != nil {
+		return fmt.Errorf("invalid signature")
+	}
+	return nil
 }
 
 func ParsePubKey(pubKeyHex string) (*btcec.PublicKey, error) {
